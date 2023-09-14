@@ -5,12 +5,13 @@ import torch.nn as nn
 batch_size = 32
 max_len = 8 # maximum length of data to be fed at a time for context
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-num_iters = 3800
+num_iters = 10000
 eval_interval = 380
-lr = 1e-3
+lr = 1e-4
 eval_iters = 100
+embed_size = 300
 
-path = "Dataset/shakespeare/input.txt"
+path = "Datasets/shakespeare/input.txt"
 # read and inspect the shakespeare file
 with open(path, 'r', encoding='utf-8') as f:
   text = f.read()
@@ -31,11 +32,6 @@ itos = { i: ch for i, ch in enumerate(chars) }
 
 encode = lambda s: [stoi[c] for c in s]
 decode = lambda l: ''.join([itos[i] for i in l])
-
-print(encode('yo bro what is up'))
-print(decode(encode('yo bro what is up')))
-
-import torch
 
 # Let's encode all the text in the tinyshakespeare dataset
 data = torch.tensor(encode(text), dtype=torch.long)
@@ -77,7 +73,7 @@ def estimate_loss():
 
 class Head(nn.Module):
    
-  def __init__(self, head_size, embed_size):
+  def __init__(self, head_size):
       super().__init__()
       self.key = nn.Linear(embed_size, head_size)
       self.query = nn.Linear(embed_size, head_size)
@@ -88,18 +84,17 @@ class Head(nn.Module):
 
       # X is of shape (B, T, C)
       B, T, C = X.shape
-      k = self.key()
-      q = self.query()
+      k = self.key(X)
+      q = self.query(X)
       
       # compute attention scores
-      tril = torch.tril(torch.ones(T, T))
+      tril = torch.tril(torch.ones((T, T), device=device))
       wei = q @ k.transpose(-2, -1) / (C ** 0.5)
       wei = torch.masked_fill(wei, tril==0, float('-inf'))
       wei = torch.softmax(wei, dim=-1)
 
       # compute the output
-      output = self.value(X) @ wei
-
+      output = wei @ self.value(X)
       return output
 
 class BigramLanguageModel(nn.Module):
@@ -107,13 +102,20 @@ class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
         # each token directly reads off the logits for the next token
-        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+        self.token_embedding_table = nn.Embedding(vocab_size, embed_size)
+        self.pos_embedding_table = nn.Embedding(max_len, embed_size)
+        self.head = Head(embed_size)
+        self.linear = nn.Linear(embed_size, vocab_size)
 
-    def forward(self, x, targets=None):
+    def forward(self, X, targets=None):
 
-        loss=None
+        B, T = X.shape
 
-        logits = self.token_embedding_table(x)
+        tok_embeds = self.token_embedding_table(X)
+        pos_embeds = self.pos_embedding_table(torch.arange(T, device=device))
+        X = tok_embeds + pos_embeds
+        sa_head = self.head(X)
+        logits = self.linear(sa_head)
 
         if targets is None:
           loss = None
@@ -130,8 +132,11 @@ class BigramLanguageModel(nn.Module):
         # idx is a list of integers
         # max_new_tokens is the maximum number of tokens to generate
         for _ in range(max_new_tokens):
+            
+            # get the last max_len tokens
+            idx_cond = idx[:, -max_len:]
             # get the predictions
-            logits, loss = self(idx)
+            logits, loss = self(idx_cond)
             # get the last time step
             logits = logits[:, -1, :]
             # apply softmax
