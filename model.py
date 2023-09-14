@@ -75,6 +75,33 @@ def estimate_loss():
 
 # Now that we have the data ready let's build the model
 
+class Head(nn.Module):
+   
+  def __init__(self, head_size, embed_size):
+      super().__init__()
+      self.key = nn.Linear(embed_size, head_size)
+      self.query = nn.Linear(embed_size, head_size)
+      self.value = nn.Linear(embed_size, head_size)
+      self.register_buffer('tril', torch.tril(torch.ones(max_len, max_len)))
+
+  def forward(self, X):
+
+      # X is of shape (B, T, C)
+      B, T, C = X.shape
+      k = self.key()
+      q = self.query()
+      
+      # compute attention scores
+      tril = torch.tril(torch.ones(T, T))
+      wei = q @ k.transpose(-2, -1) / (C ** 0.5)
+      wei = torch.masked_fill(wei, tril==0, float('-inf'))
+      wei = torch.softmax(wei, dim=-1)
+
+      # compute the output
+      output = self.value(X) @ wei
+
+      return output
+
 class BigramLanguageModel(nn.Module):
   
     def __init__(self):
