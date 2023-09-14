@@ -96,6 +96,17 @@ class Head(nn.Module):
       # compute the output
       output = wei @ self.value(X)
       return output
+  
+class MultiHeadAttention(nn.Module):
+   
+  def __init__(self, num_heads, head_size):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+    
+  def forward(self, X):
+        # X is of shape (B, T, C)
+        # output is of shape (B, T, num_heads * head_size)
+        return torch.cat([h(X) for h in self.heads], dim=-1)
 
 class BigramLanguageModel(nn.Module):
   
@@ -104,7 +115,7 @@ class BigramLanguageModel(nn.Module):
         # each token directly reads off the logits for the next token
         self.token_embedding_table = nn.Embedding(vocab_size, embed_size)
         self.pos_embedding_table = nn.Embedding(max_len, embed_size)
-        self.head = Head(embed_size)
+        self.head = MultiHeadAttention(num_heads=4, head_size=embed_size//4)
         self.linear = nn.Linear(embed_size, vocab_size)
 
     def forward(self, X, targets=None):
