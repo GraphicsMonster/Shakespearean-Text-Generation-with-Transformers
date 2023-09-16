@@ -2,14 +2,17 @@ import torch
 import torch.nn as nn
 
 # Hyperparameters
-batch_size = 32
-max_len = 8 # maximum length of data to be fed at a time for context
+batch_size = 64
+max_len = 256 # maximum length of data to be fed at a time for context
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-num_iters = 10000
+num_iters = 5000
 eval_interval = 380
-lr = 1e-4
-eval_iters = 100
-embed_size = 300
+lr = 3e-4
+eval_iters = 200
+embed_size = 384
+num_heads = 6
+block_layers = 6
+dropout = 0.2
 
 path = "Datasets/shakespeare/input.txt"
 # read and inspect the shakespeare file
@@ -43,8 +46,6 @@ val_set = data[n:]
 
 
 # define a system to pull out a sequence of max length at random from the entire dataset
-batch_size = 4
-max_len = 8 # maximum length of data to be fed at a time for context
 
 def get_batch(split):
   data = train_set if (split=='train') else val_set
@@ -78,6 +79,7 @@ class Head(nn.Module):
       self.key = nn.Linear(embed_size, head_size)
       self.query = nn.Linear(embed_size, head_size)
       self.value = nn.Linear(embed_size, head_size)
+      self.dropout = nn.Dropout(dropout)
       self.register_buffer('tril', torch.tril(torch.ones(max_len, max_len)))
 
   def forward(self, X):
@@ -92,6 +94,7 @@ class Head(nn.Module):
       wei = q @ k.transpose(-2, -1) / (C ** 0.5)
       wei = torch.masked_fill(wei, tril==0, float('-inf'))
       wei = torch.softmax(wei, dim=-1)
+      wei = self.dropout(wei)
 
       # compute the output
       output = wei @ self.value(X)
@@ -103,12 +106,14 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
         self.proj = nn.Linear(embed_size, embed_size)
+        self.dropout = nn.Dropout(dropout)
     
   def forward(self, X):
         # X is of shape (B, T, C)
         # output is of shape (B, T, num_heads * head_size)
         out = torch.cat([h(X) for h in self.heads], dim=-1)
         out = self.proj(out)
+        out = dropout(out)
         return out
 
 class FeedForward(nn.Module):
@@ -119,6 +124,7 @@ class FeedForward(nn.Module):
          nn.Linear(embed_dim, embed_dim), 
          nn.ReLU(),
          nn.Linear(embed_dim, embed_dim),
+         nn.Dropout(dropout)
       )
 
     def forward(self, X):
@@ -130,10 +136,12 @@ class Block(nn.Module):
       super().__init__()
       self.attention = MultiHeadAttention(num_heads, embed_dim//num_heads)
       self.ffwd = FeedForward(embed_dim)
+      self.ln1 = nn.LayerNorm(embed_dim)
+      self.ln2 = nn.LayerNorm(embed_dim)
 
   def forward(self, X):
-      X = X + self.attention(X)
-      X = X + self.ffwd(X)
+      X = X + self.attention(self.ln1(X))
+      X = X + self.ffwd(self.ln2(X))
       return X
 
 
@@ -144,11 +152,8 @@ class BigramLanguageModel(nn.Module):
         # each token directly reads off the logits for the next token
         self.token_embedding_table = nn.Embedding(vocab_size, embed_size)
         self.pos_embedding_table = nn.Embedding(max_len, embed_size)
-        self.blocks = nn.Sequential(
-            Block(embed_size, num_heads=4),
-            Block(embed_size, num_heads=4),
-            Block(embed_size, num_heads=4),
-        )
+        self.blocks = nn.Sequential([Block(embed_size, num_heads) for _ in range(block_layers)])
+        self.ln = nn.LayerNorm(embed_size)
         self.linear = nn.Linear(embed_size, vocab_size)
 
     def forward(self, X, targets=None):
@@ -159,6 +164,7 @@ class BigramLanguageModel(nn.Module):
         pos_embeds = self.pos_embedding_table(torch.arange(T, device=device))
         X = tok_embeds + pos_embeds
         X = self.blocks(X)
+        X = self.ln(X)
         logits = self.linear(X)
 
         if targets is None:
