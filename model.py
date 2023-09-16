@@ -120,6 +120,19 @@ class FeedForward(nn.Module):
     def forward(self, X):
        return self.net(X)
     
+class Block(nn.Module):
+   
+  def __init__(self, embed_dim, num_heads):
+      super().__init__()
+      self.attention = MultiHeadAttention(num_heads, embed_dim//num_heads)
+      self.ffwd = FeedForward(embed_dim)
+
+  def forward(self, X):
+      X = self.attention(X)
+      X = self.ffwd(X)
+      return X
+
+    
 
 class BigramLanguageModel(nn.Module):
   
@@ -128,8 +141,11 @@ class BigramLanguageModel(nn.Module):
         # each token directly reads off the logits for the next token
         self.token_embedding_table = nn.Embedding(vocab_size, embed_size)
         self.pos_embedding_table = nn.Embedding(max_len, embed_size)
-        self.head = MultiHeadAttention(num_heads=4, head_size=embed_size//4)
-        self.ffwd = FeedForward(embed_dim=embed_size)
+        self.blocks = nn.Sequential(
+            Block(embed_size, num_heads=4),
+            Block(embed_size, num_heads=4),
+            Block(embed_size, num_heads=4),
+        )
         self.linear = nn.Linear(embed_size, vocab_size)
 
     def forward(self, X, targets=None):
@@ -139,9 +155,8 @@ class BigramLanguageModel(nn.Module):
         tok_embeds = self.token_embedding_table(X)
         pos_embeds = self.pos_embedding_table(torch.arange(T, device=device))
         X = tok_embeds + pos_embeds
-        sa_head = self.head(X)
-        fwd = self.ffwd(sa_head)
-        logits = self.linear(fwd)
+        X = self.blocks(X)
+        logits = self.linear(X)
 
         if targets is None:
           loss = None
