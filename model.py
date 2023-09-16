@@ -14,7 +14,7 @@ num_heads = 6
 block_layers = 6
 dropout = 0.2
 
-path = "Datasets/shakespeare/input.txt"
+path = "Dataset/shakespeare/input.txt"
 # read and inspect the shakespeare file
 with open(path, 'r', encoding='utf-8') as f:
   text = f.read()
@@ -66,14 +66,14 @@ def estimate_loss():
          logits, loss = m(X, Y)
          losses[k] = loss.item()
       out[split] = losses.mean().item()
-    
+
    m.train()
    return out
 
 # Now that we have the data ready let's build the model
 
 class Head(nn.Module):
-   
+
   def __init__(self, head_size):
       super().__init__()
       self.key = nn.Linear(embed_size, head_size)
@@ -88,7 +88,7 @@ class Head(nn.Module):
       B, T, C = X.shape
       k = self.key(X)
       q = self.query(X)
-      
+
       # compute attention scores
       tril = torch.tril(torch.ones((T, T), device=device))
       wei = q @ k.transpose(-2, -1) / (C ** 0.5)
@@ -99,29 +99,29 @@ class Head(nn.Module):
       # compute the output
       output = wei @ self.value(X)
       return output
-  
+
 class MultiHeadAttention(nn.Module):
-   
+
   def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
         self.proj = nn.Linear(embed_size, embed_size)
         self.dropout = nn.Dropout(dropout)
-    
+
   def forward(self, X):
         # X is of shape (B, T, C)
         # output is of shape (B, T, num_heads * head_size)
         out = torch.cat([h(X) for h in self.heads], dim=-1)
         out = self.proj(out)
-        out = dropout(out)
+        out = self.dropout(out)
         return out
 
 class FeedForward(nn.Module):
-   
+
     def __init__(self, embed_dim):
       super().__init__()
       self.net = nn.Sequential(
-         nn.Linear(embed_dim, embed_dim), 
+         nn.Linear(embed_dim, embed_dim),
          nn.ReLU(),
          nn.Linear(embed_dim, embed_dim),
          nn.Dropout(dropout)
@@ -129,9 +129,9 @@ class FeedForward(nn.Module):
 
     def forward(self, X):
        return self.net(X)
-    
+
 class Block(nn.Module):
-   
+
   def __init__(self, embed_dim, num_heads):
       super().__init__()
       self.attention = MultiHeadAttention(num_heads, embed_dim//num_heads)
@@ -146,13 +146,13 @@ class Block(nn.Module):
 
 
 class BigramLanguageModel(nn.Module):
-  
+
     def __init__(self):
         super().__init__()
         # each token directly reads off the logits for the next token
         self.token_embedding_table = nn.Embedding(vocab_size, embed_size)
         self.pos_embedding_table = nn.Embedding(max_len, embed_size)
-        self.blocks = nn.Sequential([Block(embed_size, num_heads) for _ in range(block_layers)])
+        self.blocks = nn.Sequential(*[Block(embed_size, num_heads) for _ in range(block_layers)])
         self.ln = nn.LayerNorm(embed_size)
         self.linear = nn.Linear(embed_size, vocab_size)
 
@@ -182,7 +182,7 @@ class BigramLanguageModel(nn.Module):
         # idx is a list of integers
         # max_new_tokens is the maximum number of tokens to generate
         for _ in range(max_new_tokens):
-            
+
             # get the last max_len tokens
             idx_cond = idx[:, -max_len:]
             # get the predictions
@@ -207,15 +207,15 @@ optimizer = torch.optim.Adam(m.parameters(), lr=lr)
 # training loop
 
 for iter in range(num_iters):
-   
+
    # every once in a while evaluate the loss on train and val sets
   if iter%eval_interval == 0:
       losses = estimate_loss()
       print(f"iter {iter} train loss: {losses['train']:.2f} val loss: {losses['val']:.2f}")
-    
+
     # get a batch of data
   xb, yb = get_batch('train')
-  
+
   # evaluate the loss
 
   logits, loss = m(xb, yb)
