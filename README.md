@@ -47,6 +47,7 @@ Example usage:
 
 ## Results
 ![Training screenshot](./shakespeare-training-screenshot.png)
+![Inference screenshot](./generated-text.png)
 
 The generated text will capture the essence of Shakespeare's language and style, producing fascinating and often whimsical results. Explore the generated text to uncover the hidden talents of this language model.
 
