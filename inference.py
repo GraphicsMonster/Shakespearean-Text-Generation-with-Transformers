@@ -16,18 +16,13 @@ dropout = 0.2
 
 path = "Dataset/shakespeare/input.txt"
 # read and inspect the shakespeare file
+
 with open(path, 'r', encoding='utf-8') as f:
   text = f.read()
-
-# print the number of characters in the file
-print("length of the entire thing: ", len(text))
 
 # let's print all the unique characters in the text
 chars = sorted(list(set(text)))
 vocab_size = len(chars)
-
-print("here are the unique characters in the entire dataset: ", chars)
-print("the vocab size: ", vocab_size)
 
 # encoding and decoding of characters into a sequence of integers correspondign to out vocabulary(character level vocab)
 stoi = { ch:i for i, ch in enumerate(chars) }
@@ -179,6 +174,6 @@ def generate_text(model, seed, max_len):
     generated_text = decode(generated_text[0].tolist())
     return generated_text
 
-print(generate_text(m, "The king said", 1000))
+print(generate_text(m, "The king said", 100))
 
 
